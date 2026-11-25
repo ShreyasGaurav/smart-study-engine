@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Study & Exam Prep Engine</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { margin: 0; background: #0f172a; color: #e2e8f0; padding: 24px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 16px; margin-bottom: 24px; }
+        h1 { margin: 0; font-size: 1.5rem; color: #38bdf8; }
+        .badge { background: #1e293b; border: 1px solid #334155; padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { background: #2563eb; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        button:hover { background: #1d4ed8; }
+        button.secondary { background: #1e293b; border: 1px solid #475569; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 18px; }
+        label { display: block; margin-top: 12px; font-size: 0.9rem; color: #94a3b8; }
+        input, select, textarea { width: 100%; padding: 10px; margin-top: 6px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .option-btn { display: block; width: 100%; text-align: left; margin-top: 8px; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; font-weight: 400; }
+        .option-btn.selected { border-color: #38bdf8; background: #0c4a6e; }
+        .hidden { display: none; }
+        .result-box { background: #064e3b; border: 1px solid #10b981; padding: 16px; border-radius: 10px; margin-top: 16px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Smart Study &amp; Exam Prep Engine</h1>
+        <span id="statusBadge" class="badge">Checking API...</span>
+    </header>
+
+    <div class="tabs">
+        <button onclick="showTab('examTab')">Take Mock Test</button>
+        <button class="secondary" onclick="showTab('addTab')">Add Question</button>
+    </div>
+
+    <!-- Mock Exam Section -->
+    <div id="examTab">
+        <div class="card">
+            <div class="grid-2">
+                <div>
+                    <label>Select Exam Pattern</label>
+                    <select id="examSelect">
+                        <option value="SSC_CGL">SSC CGL (+2.0 / -0.5)</option>
+                        <option value="RRB_NTPC">RRB NTPC (+1.0 / -0.33)</option>
+                        <option value="GATE">GATE (+2.0 / -0.66)</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:flex-end;">
+                    <button style="width:100%;" onclick="loadQuestions()">Load Mock Paper</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="questionsContainer"></div>
+        <button id="submitBtn" class="hidden" onclick="submitMock()">Submit Mock &amp; Calculate Score</button>
+        <div id="resultContainer"></div>
+    </div>
+
+    <!-- Add Question Section -->
+    <div id="addTab" class="hidden">
+        <div class="card">
+            <h3>Add Question to MySQL Bank</h3>
+            <div class="grid-2">
+                <div>
+                    <label>Exam Category</label>
+                    <select id="qExam">
+                        <option value="SSC_CGL">SSC_CGL</option>
+                        <option value="RRB_NTPC">RRB_NTPC</option>
+                        <option value="GATE">GATE</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Subject</label>
+                    <input id="qSubject" placeholder="e.g., Quant, Reasoning, OS, DBMS" />
+                </div>
+            </div>
+            <label>Question Text</label>
+            <textarea id="qText" rows="3" placeholder="Enter question statement..."></textarea>
+            <div class="grid-2">
+                <div><label>Option A</label><input id="optA" /></div>
+                <div><label>Option B</label><input id="optB" /></div>
+                <div><label>Option C</label><input id="optC" /></div>
+                <div><label>Option D</label><input id="optD" /></div>
+            </div>
+            <div class="grid-2">
+                <div>
+                    <label>Correct Option</label>
+                    <select id="qCorrect">
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Difficulty</label>
+                    <select id="qDiff">
+                        <option value="EASY">EASY</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HARD">HARD</option>
+                    </select>
+                </div>
+            </div>
+            <button style="margin-top:16px;" onclick="saveQuestion()">Save Question</button>
+            <p id="saveMsg"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    let selectedAnswers = {};
+
+    fetch('/api/v1/status')
+        .then(r => r.json())
+        .then(d => document.getElementById('statusBadge').textContent = `Backend: ${d.status}`)
+        .catch(() => document.getElementById('statusBadge').textContent = 'Backend: Offline');
+
+    function showTab(id) {
+        document.getElementById('examTab').classList.add('hidden');
+        document.getElementById('addTab').classList.add('hidden');
+        document.getElementById(id).classList.remove('hidden');
+    }
+
+    async function loadQuestions() {
+        const exam = document.getElementById('examSelect').value;
+        const res = await fetch(`/api/v1/exams/${exam}`);
+        const questions = await res.json();
+        selectedAnswers = {};
+        document.getElementById('resultContainer').innerHTML = '';
+
+        const container = document.getElementById('questionsContainer');
+        if (!questions.length) {
+            container.innerHTML = '<div class="card">No questions found for this exam yet. Switch to "Add Question" to create some!</div>';
+            document.getElementById('submitBtn').classList.add('hidden');
+            return;
+        }
+
+        container.innerHTML = questions.map((q, idx) => `
+            <div class="card">
+                <small style="color:#38bdf8;">${q.subject} • ${q.difficulty}</small>
+                <p><strong>Q${idx + 1}.</strong> ${q.questionText}</p>
+                ${['A', 'B', 'C', 'D'].map(opt => `
+                    <button class="option-btn" id="btn-${q.id}-${opt}" onclick="selectOpt(${q.id}, '${opt}')">
+                        <strong>${opt}.</strong> ${q['option' + opt]}
+                    </button>
+                `).join('')}
+            </div>
+        `).join('');
+        document.getElementById('submitBtn').classList.remove('hidden');
+    }
+
+    function selectOpt(qId, opt) {
+        selectedAnswers[qId] = opt;
+        ['A', 'B', 'C', 'D'].forEach(o => {
+            const el = document.getElementById(`btn-${qId}-${o}`);
+            if (el) el.classList.toggle('selected', o === opt);
+        });
+    }
+
+    async function submitMock() {
+        const exam = document.getElementById('examSelect').value;
+        const scheme = exam === 'RRB_NTPC' ? [1.0, 0.33] : (exam === 'GATE' ? [2.0, 0.66] : [2.0, 0.5]);
+        const res = await fetch(`/api/v1/exams/submit?marksPerCorrect=${scheme[0]}&negativePenalty=${scheme[1]}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(selectedAnswers)
+        });
+        const data = await res.json();
+        document.getElementById('resultContainer').innerHTML = `
+            <div class="result-box">
+                <h3>Mock Scorecard</h3>
+                <p><strong>Net Score:</strong> ${data.netScore} | <strong>Correct:</strong> ${data.correct} | <strong>Wrong:</strong> ${data.wrong}</p>
+                <p><strong>Weak Subjects to Revise:</strong> ${data.weakSubjectsToRevise.length ? data.weakSubjectsToRevise.join(', ') : 'None — 100% accuracy!'}</p>
+            </div>
+        `;
+    }
+
+    async function saveQuestion() {
+        const payload = {
+            examCategory: document.getElementById('qExam').value,
+            subject: document.getElementById('qSubject').value || 'General',
+            difficulty: document.getElementById('qDiff').value,
+            questionText: document.getElementById('qText').value,
+            optionA: document.getElementById('optA').value,
+            optionB: document.getElementById('optB').value,
+            optionC: document.getElementById('optC').value,
+            optionD: document.getElementById('optD').value,
+            correctOption: document.getElementById('qCorrect').value
+        };
+        const res = await fetch('/api/v1/exams/questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        document.getElementById('saveMsg').textContent = res.ok ? 'Saved to MySQL!' : 'Error saving question.';
+    }
+</script>
+</body>
+</html>
